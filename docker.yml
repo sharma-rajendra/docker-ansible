@@ -1,0 +1,45 @@
+- name: Compute Engine Instance Examples
+  hosts: localhost
+  tags: [docker]
+  gather_facts: false
+  vars_files:
+    - gce_vars/auth
+    - gce_vars/machines
+  tasks:
+    - name: create docker instance
+      # Basic provisioning example.  Create multiple Debian 8 instances in the
+      # us-central1-a Zone of n1-standard-1 machine type.
+      gce:
+        instance_names: docker
+        zone: us-central1-a
+        machine_type: n1-standard-1
+        image_family: "{{ image_family }}"
+        state: present
+        service_account_email: "{{ service_account_email }}"
+        credentials_file: "{{ credentials_file }}"
+        project_id: "{{ project }}"
+        metadata : '{ "startup-script" : "apt-get update" }'
+      register: gce
+
+    - name: Save host data
+      add_host:
+        hostname: "{{ item.public_ip }}"
+        groupname: gce_instances_ips
+      with_items: "{{ gce.instance_data }}"
+
+    - name: Wait for SSH for instances
+      wait_for:
+        delay: 1
+        host: "{{ item.public_ip }}"
+        port: 22
+        state: started
+        timeout: 60
+      with_items: "{{ gce.instance_data }}"
+
+- name: Configure Hosts
+  hosts: gce_instances_ips
+  become: yes
+  become_method: sudo
+
+  roles:
+    - containers
